@@ -103,3 +103,66 @@ npm run dev
 ```
 
 Open <http://localhost:5173>, paste a YouTube URL, and ask away.
+
+## Deployment
+
+### Backend on Hugging Face Spaces
+
+1. Create a Space: **SDK = Gradio**, hardware = free CPU basic.
+2. Push `backend/` to the Space repo (its `README.md` carries the Space config):
+
+   ```bash
+   git clone https://huggingface.co/spaces/<user>/<space> hf-space
+   cp backend/* hf-space/
+   cd hf-space && git add . && git commit -m "deploy backend" && git push
+   ```
+
+3. Under **Settings -> Variables and secrets** add:
+   - secret `GROQ_API_KEY` (or `GOOGLE_API_KEY`)
+   - variable `LLM_PROVIDER` = `groq` or `gemini` (optional; auto-detected)
+   - variable `ALLOWED_ORIGINS` = your Vercel URL, e.g. `https://ytqa.vercel.app`
+4. The Space serves the API at `https://<user>-<space>.hf.space/api/...`.
+
+`*.vercel.app` origins are already allowed by a CORS regex, so preview
+deployments work without extra configuration.
+
+### Frontend on Vercel
+
+1. Import the repo and set **Root Directory** to `frontend`.
+2. Framework preset: Vite (build `npm run build`, output `dist`).
+3. Add environment variable `VITE_API_BASE_URL` = your Space URL, for example
+   `https://<user>-<space>.hf.space`.
+4. Deploy. `vercel.json` handles SPA rewrites and asset caching.
+
+Vite inlines env vars at build time, so change `VITE_API_BASE_URL` then redeploy.
+
+## Configuration reference
+
+| Variable               | Default                                  | Purpose                              |
+| ---------------------- | ---------------------------------------- | ------------------------------------ |
+| `LLM_PROVIDER`         | auto                                     | `groq` or `gemini`                    |
+| `GROQ_MODEL`           | `llama-3.1-8b-instant`                   | Groq chat model                       |
+| `GEMINI_MODEL`         | `gemini-1.5-flash`                       | Gemini chat model                     |
+| `EMBEDDING_MODEL`      | `sentence-transformers/all-MiniLM-L6-v2` | Local encoder                         |
+| `CHUNK_SIZE`           | `1000`                                   | Characters per transcript chunk       |
+| `CHUNK_OVERLAP`        | `150`                                    | Overlap between chunks                |
+| `RETRIEVER_K`          | `4`                                      | Chunks retrieved per question         |
+| `LLM_TEMPERATURE`      | `0.2`                                    | Generation temperature                |
+| `MAX_CACHED_VIDEOS`    | `8`                                      | In-memory FAISS indexes kept          |
+| `TRANSCRIPT_LANGUAGES` | `en,en-US,en-GB`                         | Preferred caption languages           |
+| `TRANSCRIPT_PROXY_URL` | unset                                    | Proxy for YouTube transcript requests |
+| `ALLOWED_ORIGINS`      | localhost dev ports                      | Extra CORS origins                    |
+
+## Troubleshooting
+
+- **"No transcript is available"** - the video has captions disabled, or none in
+  the configured languages. Try another video or extend `TRANSCRIPT_LANGUAGES`.
+- **Transcript fetches fail only in production** - YouTube blocks many datacenter
+  IPs. Set `TRANSCRIPT_PROXY_URL` on the Space.
+- **"This video is not loaded yet"** - the Space restarted and the in-memory
+  index was dropped. Submit the URL again.
+- **CORS errors** - add the exact frontend origin to `ALLOWED_ORIGINS` (scheme
+  included, no trailing slash).
+- **`npm run` fails on Windows** - the repository path contains `&`, which breaks
+  npm's default `cmd.exe` script shell. `frontend/.npmrc` switches it to bash;
+  renaming the folder to something like `YTQA` also fixes it for good.
