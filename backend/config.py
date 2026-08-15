@@ -131,9 +131,9 @@ def get_settings() -> Settings:
     return Settings(
         provider=_resolve_provider(groq_key, google_key),
         groq_api_key=groq_key,
-        groq_model=_text("GROQ_MODEL", "llama-3.1-8b-instant"),
+        groq_model=_text("GROQ_MODEL", "openai/gpt-oss-20b"),
         google_api_key=google_key,
-        gemini_model=_text("GEMINI_MODEL", "gemini-1.5-flash"),
+        gemini_model=_text("GEMINI_MODEL", "gemini-2.5-flash"),
         embedding_model=_text("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
         chunk_size=_integer("CHUNK_SIZE", 1000),
         chunk_overlap=_integer("CHUNK_OVERLAP", 150),
