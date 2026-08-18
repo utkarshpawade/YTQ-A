@@ -1,5 +1,15 @@
-/** Matches citations the model writes inline, e.g. [04:12] or [1:02:33]. */
-export const TIMESTAMP_PATTERN = /\[(\d{1,2}:\d{2}(?::\d{2})?)\]/g
+/** One clock label: "04:12" or "1:02:33". */
+const CLOCK = String.raw`\d{1,2}:\d{2}(?::\d{2})?`
+
+/**
+ * Matches citations the model writes inline. The second group is present when
+ * the model echoes an excerpt's full span, e.g. [04:12 - 05:01], which it does
+ * often because that is how excerpts are labelled in the prompt.
+ */
+export const TIMESTAMP_PATTERN = new RegExp(
+  String.raw`\[(${CLOCK})(?:\s*[-\u2012-\u2015]\s*(${CLOCK}))?\]`,
+  'g',
+)
 
 /** "04:12" -> 252, "1:02:33" -> 3753. Returns null when unparseable. */
 export function toSeconds(label) {
@@ -22,7 +32,8 @@ export function toLabel(seconds) {
 
 /**
  * Split answer text into plain-text and timestamp parts so the timestamps can
- * be rendered as buttons that seek the player.
+ * be rendered as buttons that seek the player. A cited range keeps its printed
+ * label but seeks to where the span starts.
  */
 export function splitIntoParts(text) {
   const parts = []
@@ -39,7 +50,11 @@ export function splitIntoParts(text) {
     if (match.index > cursor) {
       parts.push({ type: 'text', value: text.slice(cursor, match.index) })
     }
-    parts.push({ type: 'timestamp', label: match[1], seconds })
+    parts.push({
+      type: 'timestamp',
+      label: match[2] ? `${match[1]} - ${match[2]}` : match[1],
+      seconds,
+    })
     cursor = match.index + match[0].length
     match = pattern.exec(text)
   }
