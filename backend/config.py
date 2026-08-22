@@ -41,6 +41,13 @@ class ConfigError(RuntimeError):
     """Raised when the backend is missing credentials it needs to answer."""
 
 
+def _missing_key_message(variable: str, purpose: str) -> str:
+    return (
+        f"{variable} is missing, and it is required for {purpose}. Add it to "
+        "backend/.env for local runs, or as a secret on your deployment host."
+    )
+
+
 def _text(name: str, default: str = "") -> str:
     value = os.getenv(name)
     return value.strip() if value and value.strip() else default
@@ -103,18 +110,29 @@ class Settings:
         return self.groq_model if self.provider == GROQ else self.gemini_model
 
     @property
-    def has_credentials(self) -> bool:
+    def has_llm_credentials(self) -> bool:
         key = self.groq_api_key if self.provider == GROQ else self.google_api_key
         return bool(key)
 
-    def require_credentials(self) -> None:
-        if self.has_credentials:
+    @property
+    def has_embedding_credentials(self) -> bool:
+        """Embeddings always go through the Gemini API, whichever LLM answers."""
+        return bool(self.google_api_key)
+
+    @property
+    def has_credentials(self) -> bool:
+        return self.has_llm_credentials and self.has_embedding_credentials
+
+    def require_llm_credentials(self) -> None:
+        if self.has_llm_credentials:
             return
         variable = "GROQ_API_KEY" if self.provider == GROQ else "GOOGLE_API_KEY"
-        raise ConfigError(
-            f"{variable} is missing. Add it to backend/.env for local runs, or as a "
-            "repository secret on your Hugging Face Space."
-        )
+        raise ConfigError(_missing_key_message(variable, f"the {self.provider} chat model"))
+
+    def require_embedding_credentials(self) -> None:
+        if self.has_embedding_credentials:
+            return
+        raise ConfigError(_missing_key_message("GOOGLE_API_KEY", "transcript embeddings"))
 
 
 @lru_cache(maxsize=1)
@@ -134,7 +152,7 @@ def get_settings() -> Settings:
         groq_model=_text("GROQ_MODEL", "openai/gpt-oss-20b"),
         google_api_key=google_key,
         gemini_model=_text("GEMINI_MODEL", "gemini-2.5-flash"),
-        embedding_model=_text("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"),
+        embedding_model=_text("EMBEDDING_MODEL", "models/gemini-embedding-001"),
         chunk_size=_integer("CHUNK_SIZE", 1000),
         chunk_overlap=_integer("CHUNK_OVERLAP", 150),
         retriever_k=_integer("RETRIEVER_K", 4),

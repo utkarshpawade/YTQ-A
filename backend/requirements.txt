@@ -5,14 +5,14 @@ gradio>=4.44.0,<5.0.0
 pydantic>=2.7.0
 python-dotenv>=1.0.1
 
-# --- RAG stack (free tier: local embeddings + free LLM APIs) -----------------
+# --- RAG stack (free tier: hosted embeddings + free LLM APIs) ----------------
+# Embeddings are an API call, not a local model, so torch is deliberately absent
+# and the deployed image stays small enough for free hosting tiers.
 langchain>=0.3.0
 langchain-core>=0.3.0
 langchain-community>=0.3.0
-langchain-huggingface>=0.1.0
 langchain-groq>=0.2.0
 langchain-google-genai>=2.0.0
-sentence-transformers>=3.0.0
 faiss-cpu>=1.8.0
 
 # --- Transcripts -------------------------------------------------------------

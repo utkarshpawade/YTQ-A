@@ -130,20 +130,25 @@ _llm_lock = threading.Lock()
 
 
 def get_embeddings(settings: Settings | None = None) -> Any:
-    """Load the local MiniLM encoder once and share it across requests."""
+    """Build the Gemini embeddings client once and share it across requests.
+
+    Embeddings are an API call rather than a local model, which keeps the
+    deployed image small enough for free hosting tiers - no torch, no weights
+    to download at boot.
+    """
     global _embeddings
     if _embeddings is not None:
         return _embeddings
     settings = settings or get_settings()
+    settings.require_embedding_credentials()
     with _embeddings_lock:
         if _embeddings is None:
-            from langchain_huggingface import HuggingFaceEmbeddings
+            from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-            logger.info("Loading embedding model %s", settings.embedding_model)
-            _embeddings = HuggingFaceEmbeddings(
-                model_name=settings.embedding_model,
-                model_kwargs={"device": "cpu"},
-                encode_kwargs={"normalize_embeddings": True},
+            logger.info("Initialising embedding model %s", settings.embedding_model)
+            _embeddings = GoogleGenerativeAIEmbeddings(
+                model=settings.embedding_model,
+                google_api_key=settings.google_api_key,
             )
     return _embeddings
 
@@ -151,7 +156,7 @@ def get_embeddings(settings: Settings | None = None) -> Any:
 def get_llm(settings: Settings | None = None) -> Any:
     """Build the chat model for the configured provider (Groq or Gemini)."""
     settings = settings or get_settings()
-    settings.require_credentials()
+    settings.require_llm_credentials()
     key = (settings.provider, settings.model_name, settings.temperature)
     if key in _llm_cache:
         return _llm_cache[key]
@@ -344,7 +349,7 @@ def provider_status(settings: Settings | None = None) -> dict[str, Any]:
 
 
 def warm_embeddings() -> None:
-    """Preload the encoder so the first request does not pay the download cost."""
+    """Build the embeddings client at boot so key problems surface in the logs."""
     try:
         get_embeddings()
     except Exception:  # noqa: BLE001 - warmup is best effort
