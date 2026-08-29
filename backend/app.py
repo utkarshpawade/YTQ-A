@@ -1,8 +1,8 @@
 """FastAPI application for the YouTube Q&A RAG backend.
 
-Deployed to a Hugging Face Space using the Gradio SDK: a tiny Gradio demo is
-mounted at "/" so the Space boots without a Dockerfile, while the real JSON API
-lives under "/api" for the Vercel frontend to call.
+Runs as a single long-lived process behind uvicorn, which keeps the in-process
+vector store warm between requests. The JSON API lives under "/api" for the
+Vercel frontend to call.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import logging
 import os
 import threading
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,7 +48,7 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    """Download/load the embedding model in the background at boot."""
+    """Initialise the embeddings client in the background at boot."""
     logger.info(
         "Starting with provider=%s model=%s credentials=%s",
         settings.provider,
@@ -141,48 +141,20 @@ async def chat_endpoint(payload: QueryRequest) -> QueryResponse:
     )
 
 
-# --- Gradio mount -----------------------------------------------------------
-# Hugging Face Spaces running the Gradio SDK need a Gradio app to serve, which
-# lets this FastAPI app deploy without a Dockerfile. The demo below doubles as a
-# smoke test page for the deployed Space.
-
-import gradio as gr  # noqa: E402
+# --- Root ------------------------------------------------------------------
 
 
-def _demo_ask(url: str, question: str) -> str:
-    if not url or not question:
-        return "Paste a YouTube URL and ask a question."
-    try:
-        index = process_video(url, settings)
-        result = answer_question(index.video_id, question, None, settings)
-    except (TranscriptError, PipelineError, ConfigError) as exc:
-        return f"Error: {exc}"
-    citations = ", ".join(source["timestamp"] for source in result["sources"])
-    return f"{result['answer']}\n\nRetrieved from: {citations}"
-
-
-with gr.Blocks(title="YouTube Q&A RAG Backend") as demo:
-    gr.Markdown(
-        "# YouTube Q&A RAG Backend\n"
-        "This Space hosts the FastAPI service behind the YouTube Q&A app.\n\n"
-        "- `POST /api/process-video` - index a video transcript\n"
-        "- `POST /api/chat` - ask a question and get timestamped citations\n"
-        "- `GET /api/health` - provider and model status\n"
-        "- `GET /docs` - interactive OpenAPI docs\n\n"
-        "The box below is a quick smoke test that uses the same pipeline."
-    )
-    url_input = gr.Textbox(label="YouTube URL", placeholder="https://www.youtube.com/watch?v=...")
-    question_input = gr.Textbox(label="Question", placeholder="What is this video about?")
-    answer_output = gr.Textbox(label="Answer", lines=8)
-    gr.Button("Ask", variant="primary").click(
-        _demo_ask, inputs=[url_input, question_input], outputs=answer_output
-    )
-
-app = gr.mount_gradio_app(app, demo, path="/")
+@app.get("/", tags=["system"], summary="Service index")
+async def root() -> dict[str, Any]:
+    return {
+        "service": app.title,
+        "version": app.version,
+        "docs": "/docs",
+        "endpoints": ["/api/health", "/api/process-video", "/api/chat"],
+    }
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    port = int(os.getenv("PORT") or os.getenv("GRADIO_SERVER_PORT") or 7860)
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
