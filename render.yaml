@@ -1,0 +1,35 @@
+# Render Blueprint. Create the service with New > Blueprint and point it at this
+# repository; Render reads this file and prompts for the secrets marked below.
+services:
+  - type: web
+    name: youtube-qa-api
+    runtime: python
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # Render injects $PORT; a single worker keeps the in-process vector cache warm.
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: LLM_PROVIDER
+        value: groq
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-20b
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: EMBEDDING_MODEL
+        value: models/gemini-embedding-001
+      # Prompted on first deploy - never stored in the repo.
+      - key: GROQ_API_KEY
+        sync: false
+      # Required even with LLM_PROVIDER=groq: it serves the embeddings.
+      - key: GOOGLE_API_KEY
+        sync: false
+      # Your Vercel URL. *.vercel.app is already allowed by regex in config.py,
+      # so this is only needed for a custom domain.
+      - key: ALLOWED_ORIGINS
+        sync: false
