@@ -5,13 +5,14 @@ services:
     name: youtube-qa-api
     runtime: python
     plan: free
-    region: oregon
+    # Free plan regions: oregon, ohio, virginia, frankfurt, singapore.
+    # Pick the one nearest you - it is the main lever on response latency.
+    region: singapore
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     # Render injects $PORT; a single worker keeps the in-process vector cache warm.
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT --workers 1
     healthCheckPath: /api/health
-    autoDeployTrigger: commit
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.7"
