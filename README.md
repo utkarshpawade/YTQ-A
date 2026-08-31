@@ -5,8 +5,9 @@ is given. The backend retrieves the video transcript, indexes it locally, and
 answers with citations like `[04:12]` - clicking one seeks the embedded player
 to that second.
 
-Runs entirely on free tiers: local CPU embeddings, in-process FAISS, a free LLM
-API (Groq or Gemini), a Hugging Face Space for the API, and Vercel for the UI.
+Runs entirely on free tiers: hosted Gemini embeddings, in-process FAISS, a free
+LLM API (Groq or Gemini), and Vercel for the UI. No local model weights, so the
+backend image stays small enough for any free hosting tier.
 
 ## Architecture
 
@@ -15,13 +16,13 @@ UrlInput -> POST /api/process-video
                  |
                  +-> youtube-transcript-api -> caption snippets
                  +-> chunker keeps [start, end] on every chunk
-                 +-> all-MiniLM-L6-v2 (local CPU) -> FAISS index (in memory)
+                 +-> gemini-embedding-001 (API) -> FAISS index (in memory)
 
 ChatBox  -> POST /api/chat
                  |
                  +-> MMR retrieval over that index
                  +-> excerpts labelled "[04:12 - 05:01]" go into the prompt
-                 +-> Groq llama-3.1-8b-instant / Gemini 1.5 Flash
+                 +-> Groq openai/gpt-oss-20b / Gemini 2.5 Flash
                  |
                  v
         answer with inline [04:12] citations  +  source list with start seconds
@@ -34,10 +35,10 @@ ChatBox  -> POST /api/chat
 
 | Concern    | Choice                                          | Cost |
 | ---------- | ----------------------------------------------- | ---- |
-| Embeddings | `all-MiniLM-L6-v2` via `langchain-huggingface`  | free, runs on CPU, no key |
+| Embeddings | `gemini-embedding-001` via the Gemini API        | free tier, no local weights |
 | Vector DB  | FAISS in process                                 | free, no service to host |
-| LLM        | Groq `llama-3.1-8b-instant` or Gemini `1.5-flash` | free API tiers |
-| Backend    | HF Space, Gradio SDK (no Docker)                 | free 2 vCPU / 16 GB |
+| LLM        | Groq `openai/gpt-oss-20b` or Gemini `2.5-flash` | free API tiers |
+| Backend    | Any host that runs FastAPI (~180 MB image)       | fits free tiers |
 | Frontend   | Vercel static build                              | free hobby tier |
 
 Transcripts are chunked snippet-by-snippet so every chunk keeps the start and
@@ -48,13 +49,13 @@ as inline citations, and the UI turns them into seek buttons.
 
 ```text
 backend/
-  app.py            FastAPI app, CORS, error handling, Gradio mount
+  app.py            FastAPI app, CORS, error handling, routes
   config.py         Env-driven settings, Groq/Gemini provider detection
   transcript.py     URL parsing, transcript fetch, timestamped chunking
   rag_pipeline.py   Embeddings, FAISS store, retrieval + generation
   schemas.py        Pydantic request/response models
   requirements.txt
-  README.md         Hugging Face Space card (sdk: gradio)
+  README.md         Backend and deployment notes
 frontend/
   src/components/   VideoPlayer.jsx, ChatBox.jsx, UrlInput.jsx
   src/api.js        Backend client (VITE_API_BASE_URL)
@@ -69,14 +70,15 @@ You only need one LLM key; both providers have a free tier.
 - **Groq** (default): create a key at <https://console.groq.com/keys>.
 - **Gemini**: create a key at <https://aistudio.google.com/app/apikey>.
 
-Embeddings run locally, so no key is needed for retrieval.
+`GOOGLE_API_KEY` is always required, because retrieval embeddings are served by
+the Gemini API even when `LLM_PROVIDER=groq`.
 
 ## Local setup
 
 ### Backend
 
-Python 3.10-3.12 is recommended - `faiss-cpu` and `torch` wheels lag behind the
-newest Python releases.
+Python 3.10 or newer. There is no `torch` dependency, so recent Python releases
+work without waiting for wheels; 3.14 is tested.
 
 ```bash
 cd backend
@@ -89,9 +91,9 @@ uvicorn app:app --reload --port 8000
 
 - API docs: <http://127.0.0.1:8000/docs>
 - Health check: <http://127.0.0.1:8000/api/health>
-- Gradio smoke test: <http://127.0.0.1:8000/>
 
-The first request downloads the ~90 MB embedding model; later runs use the cache.
+Nothing is downloaded at boot - embeddings are an API call, so the first request
+is as fast as every later one.
 
 ### Frontend
 
@@ -106,32 +108,34 @@ Open <http://localhost:5173>, paste a YouTube URL, and ask away.
 
 ## Deployment
 
-### Backend on Hugging Face Spaces
+### Backend on Render
 
-1. Create a Space: **SDK = Gradio**, hardware = free CPU basic.
-2. Push `backend/` to the Space repo (its `README.md` carries the Space config):
+`render.yaml` at the repository root is a Render Blueprint, so the service is
+defined in code rather than clicked together.
 
-   ```bash
-   git clone https://huggingface.co/spaces/<user>/<space> hf-space
-   cp backend/* hf-space/
-   cd hf-space && git add . && git commit -m "deploy backend" && git push
-   ```
-
-3. Under **Settings -> Variables and secrets** add:
-   - secret `GROQ_API_KEY` (or `GOOGLE_API_KEY`)
-   - variable `LLM_PROVIDER` = `groq` or `gemini` (optional; auto-detected)
-   - variable `ALLOWED_ORIGINS` = your Vercel URL, e.g. `https://ytqa.vercel.app`
-4. The Space serves the API at `https://<user>-<space>.hf.space/api/...`.
+1. In Render, choose **New -> Blueprint** and select this repository. It reads
+   `render.yaml` and proposes a free web service rooted at `backend/`.
+2. Render prompts for the values marked `sync: false`:
+   - `GOOGLE_API_KEY` - required always, it serves the embeddings
+   - `GROQ_API_KEY` - required while `LLM_PROVIDER=groq`
+   - `ALLOWED_ORIGINS` - only for a custom domain; leave blank otherwise
+3. Apply. The first build takes a few minutes; afterwards every push to `main`
+   redeploys automatically.
+4. The API is served at `https://<service>.onrender.com/api/...`, and
+   `/api/health` is the configured health check.
 
 `*.vercel.app` origins are already allowed by a CORS regex, so preview
 deployments work without extra configuration.
+
+On the free plan the service sleeps after 15 minutes idle, so the first request
+after a quiet spell pays a cold start.
 
 ### Frontend on Vercel
 
 1. Import the repo and set **Root Directory** to `frontend`.
 2. Framework preset: Vite (build `npm run build`, output `dist`).
-3. Add environment variable `VITE_API_BASE_URL` = your Space URL, for example
-   `https://<user>-<space>.hf.space`.
+3. Add environment variable `VITE_API_BASE_URL` = your Render URL, for example
+   `https://youtube-qa-api.onrender.com` (no trailing slash).
 4. Deploy. `vercel.json` handles SPA rewrites and asset caching.
 
 Vite inlines env vars at build time, so change `VITE_API_BASE_URL` then redeploy.
@@ -141,9 +145,9 @@ Vite inlines env vars at build time, so change `VITE_API_BASE_URL` then redeploy
 | Variable               | Default                                  | Purpose                              |
 | ---------------------- | ---------------------------------------- | ------------------------------------ |
 | `LLM_PROVIDER`         | auto                                     | `groq` or `gemini`                    |
-| `GROQ_MODEL`           | `llama-3.1-8b-instant`                   | Groq chat model                       |
-| `GEMINI_MODEL`         | `gemini-1.5-flash`                       | Gemini chat model                     |
-| `EMBEDDING_MODEL`      | `sentence-transformers/all-MiniLM-L6-v2` | Local encoder                         |
+| `GROQ_MODEL`           | `openai/gpt-oss-20b`                     | Groq chat model                       |
+| `GEMINI_MODEL`         | `gemini-2.5-flash`                       | Gemini chat model                     |
+| `EMBEDDING_MODEL`      | `models/gemini-embedding-001`            | Gemini embedding model                |
 | `CHUNK_SIZE`           | `1000`                                   | Characters per transcript chunk       |
 | `CHUNK_OVERLAP`        | `150`                                    | Overlap between chunks                |
 | `RETRIEVER_K`          | `4`                                      | Chunks retrieved per question         |
@@ -158,9 +162,9 @@ Vite inlines env vars at build time, so change `VITE_API_BASE_URL` then redeploy
 - **"No transcript is available"** - the video has captions disabled, or none in
   the configured languages. Try another video or extend `TRANSCRIPT_LANGUAGES`.
 - **Transcript fetches fail only in production** - YouTube blocks many datacenter
-  IPs. Set `TRANSCRIPT_PROXY_URL` on the Space.
-- **"This video is not loaded yet"** - the Space restarted and the in-memory
-  index was dropped. Submit the URL again.
+  IPs. Set `TRANSCRIPT_PROXY_URL` on the backend service.
+- **"This video is not loaded yet"** - the service restarted or slept and the
+  in-memory index was dropped. Submit the URL again.
 - **CORS errors** - add the exact frontend origin to `ALLOWED_ORIGINS` (scheme
   included, no trailing slash).
 - **`npm run` fails on Windows** - the repository path contains `&`, which breaks
