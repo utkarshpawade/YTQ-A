@@ -4,10 +4,12 @@ const CLOCK = String.raw`\d{1,2}:\d{2}(?::\d{2})?`
 /**
  * Matches citations the model writes inline. The second group is present when
  * the model echoes an excerpt's full span, e.g. [04:12 - 05:01], which it does
- * often because that is how excerpts are labelled in the prompt.
+ * often because that is how excerpts are labelled in the prompt. Fullwidth
+ * brackets are accepted too - the model reaches for 【04:12】 often enough that
+ * dropping those citations would silently cost the reader a seek link.
  */
 export const TIMESTAMP_PATTERN = new RegExp(
-  String.raw`\[(${CLOCK})(?:\s*[-\u2012-\u2015]\s*(${CLOCK}))?\]`,
+  String.raw`[[\u3010](${CLOCK})(?:\s*[-\u2012-\u2015]\s*(${CLOCK}))?[\]\u3011]`,
   'g',
 )
 
