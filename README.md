@@ -10,7 +10,6 @@
 [![Groq](https://img.shields.io/badge/LLM-Groq%20%7C%20Gemini-F55036?logo=groq&logoColor=white)](https://console.groq.com/)
 [![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![React](https://img.shields.io/badge/UI-React%2019%20%2B%20Vite-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![Cost](https://img.shields.io/badge/Runs%20on-Free%20Tiers-22C55E)](#-why-it-runs-free)
 
 </div>
 
