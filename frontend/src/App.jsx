@@ -76,7 +76,7 @@ export default function App() {
             </p>
           </div>
           <span className="rounded-full border border-slate-800 bg-slate-900 px-3 py-1 text-xs text-slate-400">
-            RAG · local embeddings · free LLM APIs
+            RAG · hosted embeddings · free LLM APIs
           </span>
         </header>
 

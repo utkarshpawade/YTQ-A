@@ -1,7 +1,7 @@
 const RAW_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
 export const API_BASE_URL = RAW_BASE.replace(/\/+$/, '')
 
-/** Turn a FastAPI error body into a single readable message. */
+/** Turn an API error body into a single readable message. */
 function readDetail(payload, fallback) {
   const detail = payload?.detail
   if (typeof detail === 'string') return detail

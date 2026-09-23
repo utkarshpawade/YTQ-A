@@ -3,19 +3,19 @@
 services:
   - type: web
     name: youtube-qa-api
-    runtime: python
+    runtime: node
     plan: free
     # Free plan regions: oregon, ohio, virginia, frankfurt, singapore.
     # Pick the one nearest you - it is the main lever on response latency.
     region: singapore
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    # Render injects $PORT; a single worker keeps the in-process vector cache warm.
-    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT --workers 1
+    buildCommand: npm ci
+    # Render injects $PORT; one Node process keeps the in-memory vector cache warm.
+    startCommand: npm start
     healthCheckPath: /api/health
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.12.7"
+      - key: NODE_VERSION
+        value: "22.20.0"
       - key: LLM_PROVIDER
         value: groq
       - key: GROQ_MODEL
@@ -23,14 +23,14 @@ services:
       - key: GEMINI_MODEL
         value: gemini-2.5-flash
       - key: EMBEDDING_MODEL
-        value: models/gemini-embedding-001
+        value: gemini-embedding-001
       # Prompted on first deploy - never stored in the repo.
       - key: GROQ_API_KEY
         sync: false
       # Required even with LLM_PROVIDER=groq: it serves the embeddings.
       - key: GOOGLE_API_KEY
         sync: false
-      # Your Vercel URL. *.vercel.app is already allowed by regex in config.py,
+      # Your Vercel URL. *.vercel.app is already allowed by the API's CORS rule,
       # so this is only needed for a custom domain.
       - key: ALLOWED_ORIGINS
         sync: false
